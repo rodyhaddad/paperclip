@@ -2876,6 +2876,14 @@ export function accessRoutes(
     res.json(members);
   });
 
+  // TEMPORARY: enriched human members list — remove once upstream ships a members UI
+  router.get("/companies/:companyId/human-members", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertCompanyPermission(req, companyId, "users:manage_permissions");
+    const members = await access.listHumanMembers(companyId);
+    res.json(members);
+  });
+
   router.patch(
     "/companies/:companyId/members/:memberId/permissions",
     validate(updateMemberPermissionsSchema),

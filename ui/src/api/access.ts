@@ -94,7 +94,22 @@ type CompanyInviteCreated = {
   inviteMessage?: string | null;
 };
 
+// TEMPORARY: type for enriched human member — remove once upstream ships a members UI
+type HumanMember = {
+  id: string;
+  principalId: string;
+  status: string;
+  membershipRole: string | null;
+  createdAt: string;
+  userName: string;
+  userEmail: string;
+};
+
 export const accessApi = {
+  // TEMPORARY: enriched human members list — remove once upstream ships a members UI
+  listHumanMembers: (companyId: string) =>
+    api.get<HumanMember[]>(`/companies/${companyId}/human-members`),
+
   createCompanyInvite: (
     companyId: string,
     input: {

@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION } from "@paperclipai/shared";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -9,7 +9,7 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload } from "lucide-react";
+import { Settings, Check, Download, Upload, Copy, UserPlus, Users } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -35,6 +35,14 @@ export function CompanySettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
+
+  // TEMPORARY: human members query — remove once upstream ships a members UI
+  const humanMembersQuery = useQuery({
+    queryKey: queryKeys.access.humanMembers(selectedCompanyId ?? ""),
+    queryFn: () => accessApi.listHumanMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
@@ -55,6 +63,11 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+
+  // TEMPORARY: Human invite state — remove once upstream ships a dedicated human invite UI
+  const [humanInviteUrl, setHumanInviteUrl] = useState<string | null>(null);
+  const [humanInviteError, setHumanInviteError] = useState<string | null>(null);
+  const [humanInviteCopied, setHumanInviteCopied] = useState(false);
 
   const generalDirty =
     !!selectedCompany &&
@@ -157,6 +170,37 @@ export function CompanySettings() {
     }
   });
 
+  // TEMPORARY: Human invite mutation — remove once upstream ships a dedicated human invite UI
+  const humanInviteMutation = useMutation({
+    mutationFn: () =>
+      accessApi.createCompanyInvite(selectedCompanyId!, {
+        allowedJoinTypes: "human"
+      }),
+    onSuccess: (invite) => {
+      setHumanInviteError(null);
+      const base = window.location.origin.replace(/\/+$/, "");
+      const url = invite.inviteUrl.startsWith("http")
+        ? invite.inviteUrl
+        : `${base}${invite.inviteUrl}`;
+      setHumanInviteUrl(url);
+      setHumanInviteCopied(false);
+      navigator.clipboard.writeText(url).then(
+        () => {
+          setHumanInviteCopied(true);
+          setTimeout(() => setHumanInviteCopied(false), 2000);
+        },
+        () => {
+          /* clipboard may not be available */
+        }
+      );
+    },
+    onError: (err) => {
+      setHumanInviteError(
+        err instanceof Error ? err.message : "Failed to create invite"
+      );
+    }
+  });
+
   const syncLogoState = (nextLogoUrl: string | null) => {
     setLogoUrl(nextLogoUrl ?? "");
     void queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -198,6 +242,9 @@ export function CompanySettings() {
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
+    setHumanInviteUrl(null);
+    setHumanInviteError(null);
+    setHumanInviteCopied(false);
   }, [selectedCompanyId]);
 
   const archiveMutation = useMutation({
@@ -416,6 +463,71 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {/* TEMPORARY: Human members list — remove once upstream ships a members UI */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            Members
+          </div>
+        </div>
+        <div className="rounded-md border border-border px-4 py-4">
+          {humanMembersQuery.isLoading && (
+            <p className="text-xs text-muted-foreground">Loading members...</p>
+          )}
+          {humanMembersQuery.isError && (
+            <p className="text-xs text-destructive">
+              {humanMembersQuery.error instanceof Error
+                ? humanMembersQuery.error.message
+                : "Failed to load members"}
+            </p>
+          )}
+          {humanMembersQuery.data && humanMembersQuery.data.length === 0 && (
+            <p className="text-xs text-muted-foreground">No human members yet.</p>
+          )}
+          {humanMembersQuery.data && humanMembersQuery.data.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="pb-2 font-medium">Name</th>
+                  <th className="pb-2 font-medium">Email</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium">Role</th>
+                  <th className="pb-2 font-medium">Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {humanMembersQuery.data.map((member) => (
+                  <tr key={member.id} className="border-b border-border/50 last:border-0">
+                    <td className="py-2">{member.userName}</td>
+                    <td className="py-2 text-muted-foreground">{member.userEmail}</td>
+                    <td className="py-2">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs ${
+                          member.status === "active"
+                            ? "bg-green-500/10 text-green-600"
+                            : member.status === "suspended"
+                            ? "bg-red-500/10 text-red-600"
+                            : "bg-yellow-500/10 text-yellow-600"
+                        }`}
+                      >
+                        {member.status}
+                      </span>
+                    </td>
+                    <td className="py-2 text-muted-foreground">
+                      {member.membershipRole ?? "member"}
+                    </td>
+                    <td className="py-2 text-muted-foreground">
+                      {new Date(member.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Feedback Sharing
@@ -463,6 +575,70 @@ export function CompanySettings() {
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Invites
         </div>
+
+        {/* TEMPORARY: Human invite section — remove once upstream ships a dedicated human invite UI */}
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="flex items-center gap-1.5">
+            <UserPlus className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              Generate a link to invite a human user to this company.
+            </span>
+            <HintIcon text="Creates a short-lived invite link (10 min). The user visits the link, signs in, and submits a join request you can approve from the Inbox." />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => humanInviteMutation.mutate()}
+              disabled={humanInviteMutation.isPending}
+            >
+              {humanInviteMutation.isPending
+                ? "Generating..."
+                : "Generate Human Invite Link"}
+            </Button>
+          </div>
+          {humanInviteError && (
+            <p className="text-sm text-destructive">{humanInviteError}</p>
+          )}
+          {humanInviteUrl && (
+            <div className="rounded-md border border-border bg-muted/30 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs text-muted-foreground">
+                  Invite link (expires in 10 minutes)
+                </div>
+                {humanInviteCopied && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 animate-pulse">
+                    <Check className="h-3 w-3" />
+                    Copied
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  value={humanInviteUrl}
+                  readOnly
+                  onFocus={(e) => e.target.select()}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(humanInviteUrl);
+                      setHumanInviteCopied(true);
+                      setTimeout(() => setHumanInviteCopied(false), 2000);
+                    } catch {
+                      /* clipboard may not be available */
+                    }
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">

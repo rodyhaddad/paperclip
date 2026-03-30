@@ -86,7 +86,7 @@ export function accessService(db: Db) {
 
   // TEMPORARY: enriched human member list — remove once upstream ships a members UI
   async function listHumanMembers(companyId: string) {
-    return db
+    const members = await db
       .select({
         id: companyMemberships.id,
         principalId: companyMemberships.principalId,
@@ -105,6 +105,34 @@ export function accessService(db: Db) {
         ),
       )
       .orderBy(sql`${companyMemberships.createdAt} asc`);
+
+    const allGrants = members.length > 0
+      ? await db
+          .select()
+          .from(principalPermissionGrants)
+          .where(
+            and(
+              eq(principalPermissionGrants.companyId, companyId),
+              eq(principalPermissionGrants.principalType, "user"),
+              inArray(
+                principalPermissionGrants.principalId,
+                members.map((m) => m.principalId),
+              ),
+            ),
+          )
+      : [];
+
+    const grantsByPrincipal = new Map<string, string[]>();
+    for (const grant of allGrants) {
+      const list = grantsByPrincipal.get(grant.principalId) ?? [];
+      list.push(grant.permissionKey);
+      grantsByPrincipal.set(grant.principalId, list);
+    }
+
+    return members.map((m) => ({
+      ...m,
+      grants: grantsByPrincipal.get(m.principalId) ?? [],
+    }));
   }
 
   async function listActiveUserMemberships(companyId: string) {

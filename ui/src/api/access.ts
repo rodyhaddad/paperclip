@@ -101,12 +101,21 @@ type HumanMember = {
   createdAt: string;
   userName: string;
   userEmail: string;
+  grants: string[];
 };
 
 export const accessApi = {
   // TEMPORARY: enriched human members list — remove once upstream ships a members UI
   listHumanMembers: (companyId: string) =>
     api.get<HumanMember[]>(`/companies/${companyId}/human-members`),
+
+  // TEMPORARY: update member permission grants — remove once upstream ships a members UI
+  updateMemberPermissions: (
+    companyId: string,
+    memberId: string,
+    grants: { permissionKey: string; scope?: Record<string, unknown> | null }[],
+  ) =>
+    api.patch(`/companies/${companyId}/members/${memberId}/permissions`, { grants }),
 
   createCompanyInvite: (
     companyId: string,

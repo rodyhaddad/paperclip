@@ -9,7 +9,7 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload, Copy, UserPlus, Users } from "lucide-react";
+import { Settings, Check, Download, Upload, Copy, UserPlus, Users, Shield } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -200,6 +200,53 @@ export function CompanySettings() {
       );
     }
   });
+
+  // TEMPORARY: Permission grant toggle — remove once upstream ships a members UI
+  const PERMISSION_LABELS: Record<string, string> = {
+    "tasks:assign": "Assign tasks",
+    "tasks:assign_scope": "Assign task scope",
+    "agents:create": "Create agents",
+    "users:invite": "Invite users",
+    "users:manage_permissions": "Manage permissions",
+    "joins:approve": "Approve joins",
+  };
+  const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS);
+
+  const permissionMutation = useMutation({
+    mutationFn: ({
+      memberId,
+      grants,
+    }: {
+      memberId: string;
+      grants: { permissionKey: string }[];
+    }) =>
+      accessApi.updateMemberPermissions(selectedCompanyId!, memberId, grants),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.access.humanMembers(selectedCompanyId!),
+      });
+    },
+    onError: (err) => {
+      pushToast({
+        title: err instanceof Error ? err.message : "Failed to update permissions",
+        tone: "error",
+      });
+    },
+  });
+
+  function togglePermission(
+    member: { id: string; grants: string[] },
+    permissionKey: string,
+  ) {
+    const hasIt = member.grants.includes(permissionKey);
+    const nextGrants = hasIt
+      ? member.grants.filter((g) => g !== permissionKey)
+      : [...member.grants, permissionKey];
+    permissionMutation.mutate({
+      memberId: member.id,
+      grants: nextGrants.map((g) => ({ permissionKey: g })),
+    });
+  }
 
   const syncLogoState = (nextLogoUrl: string | null) => {
     setLogoUrl(nextLogoUrl ?? "");
@@ -527,6 +574,53 @@ export function CompanySettings() {
           )}
         </div>
       </div>
+
+      {/* TEMPORARY: Permissions table — remove once upstream ships a members UI */}
+      {humanMembersQuery.data && humanMembersQuery.data.length > 0 && (
+        <div className="space-y-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5" />
+              Permissions
+            </div>
+          </div>
+          <div className="rounded-md border border-border px-4 py-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="pb-2 font-medium">Member</th>
+                  {ALL_PERMISSIONS.map((perm) => (
+                    <th key={perm} className="pb-2 font-medium text-center whitespace-nowrap px-2">
+                      {PERMISSION_LABELS[perm]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {humanMembersQuery.data.map((member) => (
+                  <tr key={member.id} className="border-b border-border/50 last:border-0">
+                    <td className="py-2 whitespace-nowrap">
+                      <div>{member.userName}</div>
+                      <div className="text-xs text-muted-foreground">{member.userEmail}</div>
+                    </td>
+                    {ALL_PERMISSIONS.map((perm) => (
+                      <td key={perm} className="py-2 text-center px-2">
+                        <input
+                          type="checkbox"
+                          checked={member.grants.includes(perm)}
+                          onChange={() => togglePermission(member, perm)}
+                          disabled={permissionMutation.isPending}
+                          className="h-4 w-4 rounded border-border accent-primary cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
